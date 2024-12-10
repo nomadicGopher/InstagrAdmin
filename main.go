@@ -8,13 +8,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 var (
     userName *string = flag.String("username", "", "YOUR_IG_USERNAME")
     accessToken *string = flag.String("access_token", "", "YOUR_IG_USER_ACCESS_TOKEN")
     outDir *string = flag.String("outDir", "", "Output directory of log file.")
-    includeVerified *string = flag.String("verified", "false", "Boolean to include verified accounts in report.")
+    includeVerified *bool = flag.Bool("includeVerified", false, "Boolean to include verified accounts in report.")
+    now time.Time = time.Now()
 )
 
 const baseURL = "https://graph.instagram.com/"
@@ -22,7 +24,7 @@ const baseURL = "https://graph.instagram.com/"
 func main() {
     flag.Parse();
 
-    logFile, err := os.Create(*outDir + "UnmutualConnections.log")
+    logFile, err := os.Create(*outDir + "UnmutualConnections_" + now.Format("2006-01-02_15-04-05") + ".log")
     if err != nil {
         log.Println("Error creating log file:", err)
     }
@@ -30,12 +32,13 @@ func main() {
 
     multiWriter := io.MultiWriter(os.Stdout, logFile)
     log.SetOutput(multiWriter)
+    log.Println("Include verified accounts in report: ", *includeVerified)
 
     // Get user data
     userProfileURL := fmt.Sprintf("%s?fields=id&access_token=%s&username=%s", baseURL, *accessToken, *userName)
     userProfileResponse, err := http.Get(userProfileURL)
     if err != nil {
-        log.Println("Error fetching ", userName, "'s ID:", err)
+        log.Println("Error fetching ", *userName, "'s ID:", err)
     }
     defer userProfileResponse.Body.Close()
 
@@ -43,7 +46,7 @@ func main() {
     userData := map[string]interface{}{}
     err = json.NewDecoder(userProfileResponse.Body).Decode(&userData)
     if err != nil {
-        log.Println("Error parsing ", userName, "'s data:", err)
+        log.Println("Error parsing ", *userName, "'s data:", err)
     }
     userID := userData["id"].(string)
         
@@ -51,7 +54,7 @@ func main() {
     usersFollowingDataURL := fmt.Sprintf("%s%s/following?access_token=%s", baseURL, userID, *accessToken)
     usersFollowingDataResponse, err := http.Get(usersFollowingDataURL)
     if err != nil {
-        log.Println("Error fetching ", userName, "'s following list:", err)
+        log.Println("Error fetching ", *userName, "'s following list:", err)
     }
     defer usersFollowingDataResponse.Body.Close()
 
@@ -59,7 +62,7 @@ func main() {
     usersFollowingData := map[string]interface{}{}
     err = json.NewDecoder(usersFollowingDataResponse.Body).Decode(&usersFollowingData)
     if err != nil {
-        log.Println("Error parsing ", userName, "'s following list data:", err)
+        log.Println("Error parsing ", *userName, "'s following list data:", err)
     }
     usersFollowingList := usersFollowingData["data"].([]interface{})
 
@@ -73,7 +76,7 @@ func main() {
         followeesAccountStatus := followeesInfo["account_status"].(map[string]interface{})
         followeeIsVerified := followeesAccountStatus["is_verified"].(bool)
 
-        if *includeVerified == "false" && followeeIsVerified {
+        if *includeVerified == false && followeeIsVerified {
             continue
         }
 
