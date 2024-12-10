@@ -1,85 +1,110 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"os"
 )
 
+var (
+    userName *string = flag.String("username", "", "YOUR_IG_USERNAME")
+    accessToken *string = flag.String("access_token", "", "YOUR_IG_USER_ACCESS_TOKEN")
+    outDir *string = flag.String("outDir", "", "Output directory of log file.")
+    includeVerified *string = flag.String("verified", "false", "Boolean to include verified accounts in report.")
+)
+
+const baseURL = "https://graph.instagram.com/"
+
 func main() {
-    // Get user's Instagram username
-    reader := bufio.NewReader(os.Stdin)
-    fmt.Print("Enter your Instagram username: ")
-    username, _ := reader.ReadString('\n')
+    flag.Parse();
 
-    // Replace with your Instagram access token
-    accessToken := "YOUR_ACCESS_TOKEN"
-
-    // Get user's ID from username
-    userIdUrl := fmt.Sprintf("https://graph.instagram.com/?fields=id&access_token=%s&username=%s", accessToken, username)
-    userIdResponse, err := http.Get(userIdUrl)
+    logFile, err := os.Create(*outDir + "UnmutualConnections.log")
     if err != nil {
-        fmt.Println("Error fetching user ID:", err)
-        return
+        log.Println("Error creating log file:", err)
     }
-    defer userIdResponse.Body.Close()
+    defer logFile.Close()
 
-    // Parse user ID
-    userIdData := map[string]interface{}{}
-    err = json.NewDecoder(userIdResponse.Body).Decode(&userIdData)
+    multiWriter := io.MultiWriter(os.Stdout, logFile)
+    log.SetOutput(multiWriter)
+
+    // Get user data
+    userProfileURL := fmt.Sprintf("%s?fields=id&access_token=%s&username=%s", baseURL, *accessToken, *userName)
+    userProfileResponse, err := http.Get(userProfileURL)
     if err != nil {
-        fmt.Println("Error parsing user ID data:", err)
-        return
+        log.Println("Error fetching ", userName, "'s ID:", err)
     }
-    userId := userIdData["id"].(string)
+    defer userProfileResponse.Body.Close()
 
+    // Parse userID
+    userData := map[string]interface{}{}
+    err = json.NewDecoder(userProfileResponse.Body).Decode(&userData)
+    if err != nil {
+        log.Println("Error parsing ", userName, "'s data:", err)
+    }
+    userID := userData["id"].(string)
+        
     // Get user's following list
-    followingUrl := fmt.Sprintf("https://graph.instagram.com/%s/following?access_token=%s", userId, accessToken)
-    followingResponse, err := http.Get(followingUrl)
+    usersFollowingDataURL := fmt.Sprintf("%s%s/following?access_token=%s", baseURL, userID, *accessToken)
+    usersFollowingDataResponse, err := http.Get(usersFollowingDataURL)
     if err != nil {
-        fmt.Println("Error fetching following list:", err)
-        return
+        log.Println("Error fetching ", userName, "'s following list:", err)
     }
-    defer followingResponse.Body.Close()
+    defer usersFollowingDataResponse.Body.Close()
 
     // Parse following list
-    followingData := map[string]interface{}{}
-    err = json.NewDecoder(followingResponse.Body).Decode(&followingData)
+    usersFollowingData := map[string]interface{}{}
+    err = json.NewDecoder(usersFollowingDataResponse.Body).Decode(&usersFollowingData)
     if err != nil {
-        fmt.Println("Error parsing following list data:", err)
-        return
+        log.Println("Error parsing ", userName, "'s following list data:", err)
     }
-    followingList := followingData["data"].([]interface{})
+    usersFollowingList := usersFollowingData["data"].([]interface{})
 
-    // Check if users follow back
-    for _, following := range followingList {
-        followingUser := following.(map[string]interface{})
-        followingUserId := followingUser["id"].(string)
+    // Check if user follows back
+	for _, followee := range usersFollowingList {
+        followsBack := false
+        followeesInfo := followee.(map[string]interface{})
+		followeesID := followeesInfo["id"].(string)
+		followeesUserName := followeesInfo["username"].(string)
+        followeesFullName := followeesInfo["full_name"].(string)
+        followeesAccountStatus := followeesInfo["account_status"].(map[string]interface{})
+        followeeIsVerified := followeesAccountStatus["is_verified"].(bool)
 
-        // Get following user's profile
-        profileUrl := fmt.Sprintf("https://graph.instagram.com/%s?fields=username,follows_count&access_token=%s", followingUserId, accessToken)
-        profileResponse, err := http.Get(profileUrl)
-        if err != nil {
-            fmt.Println("Error fetching profile:", err)
-            continue
-        }
-        defer profileResponse.Body.Close()
-
-        // Parse profile data
-        profileData := map[string]interface{}{}
-        err = json.NewDecoder(profileResponse.Body).Decode(&profileData)
-        if err != nil {
-            fmt.Println("Error parsing profile data:", err)
+        if *includeVerified == "false" && followeeIsVerified {
             continue
         }
 
-        // Check if user follows back
-        followsCount := profileData["follows_count"].(float64)
-        if followsCount > 0 {
-            username := profileData["username"].(string)
-            fmt.Println("User", username, "follows you back!")
+		// Get followee's following list
+		followeesFollowingDataURL := fmt.Sprintf("%s%s/following?access_token=%s", baseURL, followeesID, *accessToken)
+		followeesFollowingDataResponse, err := http.Get(followeesFollowingDataURL)
+		if err != nil {
+			log.Println("Error fetching ", followeesUserName, "'s following list:", err)
+			continue
+		}
+		defer followeesFollowingDataResponse.Body.Close()
+
+		// Parse followee's following list
+		followeesFollowingData := map[string]interface{}{}
+		err = json.NewDecoder(followeesFollowingDataResponse.Body).Decode(&followeesFollowingData)
+		if err != nil {
+			log.Println("Error parsing ", followeesUserName, "'s following list data:", err)
+			continue
+		}
+		followeesFollowingList := followeesFollowingData["data"].([]interface{})
+
+		// Check if userID is included in the list of followee's following list
+		for _, followeesFollowee := range followeesFollowingList {
+            followeesFolloweeInfo := followeesFollowee.(map[string]interface{})
+			if followeesFolloweeInfo["id"].(string) == userID {
+				followsBack = true
+			}
+		}
+
+        if followsBack != true {
+            log.Println(followeesUserName, " ( ", followeesFullName, " ) does not follow ", userID, " back.")
         }
-    }
+	}
 }
