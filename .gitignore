@@ -1,3 +1,4 @@
 username
 access_token
-*.log
+UnmutualConnections_*.log
+InstagrAdmin

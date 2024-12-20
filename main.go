@@ -38,7 +38,7 @@ func main() {
     userProfileURL := fmt.Sprintf("%s?fields=id&access_token=%s&username=%s", baseURL, *accessToken, *userName)
     userProfileResponse, err := http.Get(userProfileURL)
     if err != nil {
-        log.Println("Error fetching ", *userName, "'s ID:", err)
+        log.Fatalln("Error fetching ", *userName, "'s ID:", err)
     }
     defer userProfileResponse.Body.Close()
 
@@ -46,7 +46,7 @@ func main() {
     userData := map[string]interface{}{}
     err = json.NewDecoder(userProfileResponse.Body).Decode(&userData)
     if err != nil {
-        log.Println("Error parsing ", *userName, "'s data:", err)
+        log.Fatalln("Error parsing ", *userName, "'s data:", err)
     }
     userID := userData["id"].(string)
         
@@ -54,7 +54,7 @@ func main() {
     usersFollowingDataURL := fmt.Sprintf("%s%s/following?access_token=%s", baseURL, userID, *accessToken)
     usersFollowingDataResponse, err := http.Get(usersFollowingDataURL)
     if err != nil {
-        log.Println("Error fetching ", *userName, "'s following list:", err)
+        log.Fatalln("Error fetching ", *userName, "'s following list:", err)
     }
     defer usersFollowingDataResponse.Body.Close()
 
@@ -62,7 +62,7 @@ func main() {
     usersFollowingData := map[string]interface{}{}
     err = json.NewDecoder(usersFollowingDataResponse.Body).Decode(&usersFollowingData)
     if err != nil {
-        log.Println("Error parsing ", *userName, "'s following list data:", err)
+        log.Fatalf("Error parsing %s's following list data: %v\n", *userName, err)
     }
     usersFollowingList := usersFollowingData["data"].([]interface{})
 
@@ -84,7 +84,7 @@ func main() {
 		followeesFollowingDataURL := fmt.Sprintf("%s%s/following?access_token=%s", baseURL, followeesID, *accessToken)
 		followeesFollowingDataResponse, err := http.Get(followeesFollowingDataURL)
 		if err != nil {
-			log.Println("Error fetching ", followeesUserName, "'s following list:", err)
+			log.Fatalln("Error fetching ", followeesUserName, "'s following list:", err)
 			continue
 		}
 		defer followeesFollowingDataResponse.Body.Close()
@@ -93,7 +93,7 @@ func main() {
 		followeesFollowingData := map[string]interface{}{}
 		err = json.NewDecoder(followeesFollowingDataResponse.Body).Decode(&followeesFollowingData)
 		if err != nil {
-			log.Println("Error parsing ", followeesUserName, "'s following list data:", err)
+			log.Fatalln("Error parsing ", followeesUserName, "'s following list data:", err)
 			continue
 		}
 		followeesFollowingList := followeesFollowingData["data"].([]interface{})

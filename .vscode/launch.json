@@ -9,10 +9,11 @@
         "type": "go",
         "request": "launch",
         "mode": "debug",
-        "program": "main.go",
+        "program": "./InstagrAdmin",
+        "buildFlags": "-o InstagrAdmin",
         "args": [
-          "-username=${command:cat username}",
-          "-access_token=${command:cat access_token}"
+          "-username=",
+          "-access_token="
         ],
         "preLaunchTask": "clean"
       }
