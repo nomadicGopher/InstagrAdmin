@@ -1,4 +1,9 @@
+# User specific data
 username
 access_token
+
+# Results
 UnmutualConnections_*.log
-InstagrAdmin
+
+# Binaries
+InstagrAdmin*
