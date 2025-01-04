@@ -3,7 +3,7 @@ username
 access_token
 
 # Results
-UnmutualConnections_*.log
+*.log
 
 # Binaries
 InstagrAdmin*
