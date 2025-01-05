@@ -12,14 +12,69 @@ import (
 )
 
 var (
-	userName        *string   = flag.String("username", "", "Create a file named username or username.txt with only your IG user handle as the file contents.")
-	accessToken     *string   = flag.String("access_token", "", "Create a file named access_token or access_token.txt with only your IG access token as the file contents.")
-	outDir          *string   = flag.String("outDir", "", "Output directory of your results.")
+	userName        *string   = flag.String("username", "", "Your Instagram user handle. *Required")
+	accessToken     *string   = flag.String("access_token", "", "Your Instagram user access token. *Required")
+	outDir          *string   = flag.String("outDir", "", "Output directory path for your report.")
 	includeVerified *bool     = flag.Bool("includeVerified", false, "Boolean to include verified accounts in report.")
 	now             time.Time = time.Now()
 )
 
 const baseURL = "https://graph.instagram.com/"
+
+type Config struct {
+	Username        string `json:"username"`
+	AccessToken     string `json:"access_token"`
+	OutDir          string `json:"outDir"`
+	IncludeVerified bool   `json:"includeVerified"`
+}
+
+func config() {
+	file, err := os.Open("config.json")
+	if err != nil {
+		log.Println("No config file was found; command line arguments will be used.")
+
+		// Verify required arguments are met
+		if *userName == "" {
+			log.Fatalln("username commannd line argument must not be empty.")
+		}
+
+		if *accessToken == "" {
+			log.Fatalln("access_token commannd line argument must not be empty.")
+		}
+
+		return
+	}
+	defer file.Close()
+
+	log.Println("A config file was found; key/values that are specified will override command line arguments & defaults.")
+
+	var config Config
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&config)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if config.Username == "" {
+		log.Fatalln("username config file value cannot be empty. Please set to your Instagram user handle.")
+	} else if config.Username != "" {
+		*userName = config.Username
+	}
+
+	if config.AccessToken == "" {
+		log.Fatalln("access_token config file value cannot be empty. Please set to your Instagram user access token.")
+	} else if config.AccessToken != "" {
+		*accessToken = config.AccessToken
+	}
+
+	if config.OutDir != "" {
+		*outDir = config.OutDir
+	}
+
+	if config.IncludeVerified {
+		*includeVerified = true
+	}
+}
 
 func fetchData(userName string, accessToken string) ([]byte, error) {
 	url := fmt.Sprintf("%s%s?access_token=%s", baseURL, userName, accessToken)
@@ -52,6 +107,8 @@ func main() {
 	multiWriter := io.MultiWriter(os.Stdout, logFile)
 	log.SetOutput(multiWriter)
 
+	config()
+
 	not := ""
 	if !*includeVerified {
 		not = " not"
@@ -59,14 +116,14 @@ func main() {
 	log.Printf("Verified accounts are%s included.", not)
 
 	// Fetch data for the user
-	data, err := fetchData(*userName, *accessToken)
+	rawData, err := fetchData(*userName, *accessToken)
 	if err != nil {
 		log.Fatalf("Error fetching data for user %s: %v", *userName, err)
 	}
 
 	// Parse the data (assuming JSON format)
-	var result map[string]interface{}
-	if err := json.Unmarshal(data, &result); err != nil {
+	var formattedData map[string]interface{}
+	if err := json.Unmarshal(rawData, &formattedData); err != nil {
 		log.Fatalf("Error parsing %s's data: %v", *userName, err)
 	}
 
