@@ -1,3 +1,3 @@
-module github.com/nomadicGopher/InstagrAdmin
+module github.com/nomadicGopher/UnmutualConnections
 
 go 1.23.2

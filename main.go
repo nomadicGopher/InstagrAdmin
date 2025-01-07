@@ -12,10 +12,11 @@ import (
 )
 
 var (
-	userName        = flag.String("username", "", "Your Instagram user handle. *Required")
-	accessToken     = flag.String("access_token", "", "Your Instagram user access token. *Required")
-	outDir          = flag.String("outDir", "", "Output directory path for your report.")
-	includeVerified = flag.Bool("includeVerified", false, "Boolean to include verified accounts in report.")
+	userName        *string = flag.String("username", "", "Your Instagram user handle. *Required")
+	accessToken     *string = flag.String("access_token", "", "Your Instagram user access token. *Required")
+	outDir          *string = flag.String("outDir", "", "Output directory path for your report.")
+	includeVerified *bool   = flag.Bool("includeVerified", false, "Boolean to include verified accounts in report.")
+	debug           *bool   = flag.Bool("debug", false, "Enable developer logging.")
 )
 
 const baseURL = "https://graph.instagram.com/"
@@ -55,7 +56,7 @@ func loadConfig() Config {
 	}
 	defer configFile.Close()
 
-	log.Println("A config file was found; key/values that are specified will override command line arguments & defaults.")
+	log.Println("A config file was found. Specified key/value pairs will override command line arguments & their potential defaults.")
 
 	decoder := json.NewDecoder(configFile)
 	if err := decoder.Decode(&config); err != nil {
@@ -80,7 +81,10 @@ func fetchData(userName, accessToken string) ([]byte, error) {
 		return nil, fmt.Errorf("error reading response body: %v", err)
 	}
 
-	log.Printf("Raw response for user %s: %s", userName, string(body)) //! DEBUG
+	if *debug {
+		log.Printf("Raw response for user %s: %s", userName, string(body))
+	}
+
 	return body, nil
 }
 
