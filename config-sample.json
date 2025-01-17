@@ -1,6 +1,6 @@
 {
   "username": "",
   "access_token": "",
-  "includeVerified": false,
-  "outDir": ""
+  "include_verified": false,
+  "output_directory": ""
 }
