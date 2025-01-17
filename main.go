@@ -12,13 +12,15 @@ import (
 	"time"
 )
 
-const baseURL = "https://graph.instagram.com/"
+const apiBaseURL = "https://graph.instagram.com/" // https://developer.microsoft.com/en-us/graph/graph-explorer
 
 type Config struct {
+	// Instagram
 	Username        string `json:"username"`
 	AccessToken     string `json:"access_token"`
-	OutDir          string `json:"outDir"`
-	IncludeVerified bool   `json:"includeVerified"`
+	// Report
+	OutDir          string `json:"output_directory"`
+	IncludeVerified bool   `json:"include_verified"`
 }
 
 func promptUserForConfig(config *Config) {
@@ -34,24 +36,24 @@ func promptUserForConfig(config *Config) {
 		if config.Username != "" && !strings.Contains(config.Username, " ") {
 			break
 		}
-		fmt.Println("Username cannot be empty or contain spaces.")
+		fmt.Println("username cannot be empty or contain spaces.")
 	}
 
 	for {
-		fmt.Print("Enter your Instagram access token: ")
+		fmt.Print("Enter your Instagram access_token: ")
 		accessToken, err := reader.ReadString('\n')
 		if err != nil {
-			log.Fatalf("Error reading access token: %v", err)
+			log.Fatalf("Error reading access_token: %v", err)
 		}
 		config.AccessToken = strings.TrimSpace(accessToken)
 		if config.AccessToken != "" && !strings.Contains(config.AccessToken, " ") {
 			break
 		}
-		fmt.Println("Access token cannot be empty or contain spaces.")
+		fmt.Println("access_token cannot be empty or contain spaces.")
 	}
 
 	for {
-		fmt.Print("Enter output directory path for your report (leave empty for the same directory as the program): ")
+		fmt.Print("Enter the output directory path for your report (leave empty for the same directory as the program): ")
 		outDir, err := reader.ReadString('\n')
 		if err != nil {
 			log.Fatalf("Error reading output directory: %v", err)
@@ -64,20 +66,20 @@ func promptUserForConfig(config *Config) {
 		if !strings.Contains(config.OutDir, " ") {
 			break
 		}
-		fmt.Println("Output directory cannot contain spaces.")
+		fmt.Println("output_directory cannot contain spaces.")
 	}
 
 	for {
 		fmt.Print("Include verified accounts in report? (true/false): ")
 		includeVerified, err := reader.ReadString('\n')
 		if err != nil {
-			log.Fatalf("Error reading include verified: %v", err)
+			log.Fatalf("Error reading include_verified: %v", err)
 		}
 		config.IncludeVerified = strings.TrimSpace(includeVerified) == "true"
 		if !strings.Contains(includeVerified, " ") {
 			break
 		}
-		fmt.Println("Include verified input cannot contain spaces.")
+		fmt.Println("include_verified input cannot contain spaces.")
 	}
 }
 
@@ -111,18 +113,18 @@ func loadConfig() (Config, bool) {
 
 	config.OutDir = strings.TrimSpace(config.OutDir)
 	if config.OutDir == "" {
-		config.OutDir = "./"
+		config.OutDir = "./" // Default to current directory if empty
 	} else if strings.Contains(config.OutDir, " ") {
-		log.Fatalln("Config file must contain a valid 'outDir' field without spaces.")
+		log.Fatalln("Config file must contain a valid 'output_directory' field without spaces.")
 	}
 
-	config.IncludeVerified = strings.TrimSpace(fmt.Sprintf("%v", config.IncludeVerified)) == "true"
+	config.IncludeVerified = strings.TrimSpace(fmt.Sprintf("%v", config.IncludeVerified)) == "true" // Default to false if not == 'true'
 
 	return config, true
 }
 
 func fetchData(userName, accessToken string) ([]byte, error) {
-	url := fmt.Sprintf("%s%s?access_token=%s", baseURL, userName, accessToken)
+	url := fmt.Sprintf("%s%s?access_token=%s", apiBaseURL, userName, accessToken)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching data: %v", err)
