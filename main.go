@@ -12,15 +12,26 @@ import (
 	"time"
 )
 
-const apiBaseURL = "https://graph.instagram.com/" // https://developer.microsoft.com/en-us/graph/graph-explorer
+const (
+	apiBaseURL   = "https://graph.instagram.com/" // https://developer.microsoft.com/en-us/graph/graph-explorer
+	clientID     = "your-app-id"
+	clientSecret = "your-app-secret"
+	redirectURI  = "http://localhost:8080/callback"
+)
 
 type Config struct {
 	// Instagram
-	Username        string `json:"username"`
-	AccessToken     string `json:"access_token"`
+	Username    string `json:"username"`
+	AccessToken string `json:"access_token"`
 	// Report
 	OutDir          string `json:"output_directory"`
 	IncludeVerified bool   `json:"include_verified"`
+}
+
+type AccessTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int    `json:"expires_in"`
 }
 
 func promptUserForConfig(config *Config) {
@@ -39,18 +50,18 @@ func promptUserForConfig(config *Config) {
 		fmt.Println("username cannot be empty or contain spaces.")
 	}
 
-	for {
-		fmt.Print("Enter your Instagram access_token: ")
-		accessToken, err := reader.ReadString('\n')
-		if err != nil {
-			log.Fatalf("Error reading access_token: %v", err)
-		}
-		config.AccessToken = strings.TrimSpace(accessToken)
-		if config.AccessToken != "" && !strings.Contains(config.AccessToken, " ") {
-			break
-		}
-		fmt.Println("access_token cannot be empty or contain spaces.")
-	}
+	// for {
+	// 	fmt.Print("Enter your Instagram access_token: ")
+	// 	accessToken, err := reader.ReadString('\n')
+	// 	if err != nil {
+	// 		log.Fatalf("Error reading access_token: %v", err)
+	// 	}
+	// 	config.AccessToken = strings.TrimSpace(accessToken)
+	// 	if config.AccessToken != "" && !strings.Contains(config.AccessToken, " ") {
+	// 		break
+	// 	}
+	// 	fmt.Println("access_token cannot be empty or contain spaces.")
+	// }
 
 	for {
 		fmt.Print("Enter the output directory path for your report (leave empty for the same directory as the program): ")
@@ -106,10 +117,10 @@ func loadConfig() (Config, bool) {
 		log.Fatalln("Config file must contain a valid 'username' field without spaces.")
 	}
 
-	config.AccessToken = strings.TrimSpace(config.AccessToken)
-	if config.AccessToken == "" || strings.Contains(config.AccessToken, " ") {
-		log.Fatalln("Config file must contain a valid 'access_token' field without spaces.")
-	}
+	// config.AccessToken = strings.TrimSpace(config.AccessToken)
+	// if config.AccessToken == "" || strings.Contains(config.AccessToken, " ") {
+	// 	log.Fatalln("Config file must contain a valid 'access_token' field without spaces.")
+	// }
 
 	config.OutDir = strings.TrimSpace(config.OutDir)
 	if config.OutDir == "" {
@@ -141,6 +152,41 @@ func fetchData(userName, accessToken string) ([]byte, error) {
 	return body, nil
 }
 
+func fetchAccessToken(config Config) {
+	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		url := fmt.Sprintf("https://www.facebook.com/v12.0/dialog/oauth?client_id=%s&redirect_uri=%s&scope=email", clientID, redirectURI)
+		http.Redirect(w, r, url, http.StatusTemporaryRedirect)
+	})
+
+	http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			http.Error(w, "Code not found", http.StatusBadRequest)
+			return
+		}
+
+		tokenURL := fmt.Sprintf("https://graph.facebook.com/v12.0/oauth/access_token?client_id=%s&redirect_uri=%s&client_secret=%s&code=%s", clientID, redirectURI, clientSecret, code)
+		resp, err := http.Get(tokenURL)
+		if err != nil {
+			http.Error(w, "Error getting access token", http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+
+		var tokenResp AccessTokenResponse
+		if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+			http.Error(w, "Error decoding access token response", http.StatusInternalServerError)
+			return
+		}
+
+		config.AccessToken = tokenResp.AccessToken
+		fmt.Fprintf(w, "Set Access Token: %s\n", tokenResp.AccessToken)
+	})
+
+	log.Println("Starting server on :8080")      // Is this necessary?
+	log.Fatal(http.ListenAndServe(":8080", nil)) // Is this necessary?
+}
+
 func main() {
 	config, _ := loadConfig()
 
@@ -160,6 +206,8 @@ func main() {
 		not = " not"
 	}
 	log.Printf("Verified accounts are%s included.", not)
+
+	fetchAccessToken(config)
 
 	// Fetch data for the user
 	data, err := fetchData(config.Username, config.AccessToken)
