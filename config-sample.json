@@ -1,6 +1,6 @@
 {
-  "username": "", //! Instagram user handle. *Required
-  "access_token": "", //! Instagram user access token. *Required
-  "includeVerified": false, // true or false. Default = false
-  "outputDirector": "" // Folder where results will be placed. Default = "" a.k.a. the current directory.
+  "username": "",
+  "access_token": "",
+  "includeVerified": false,
+  "outDir": ""
 }
