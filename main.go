@@ -20,10 +20,8 @@ const (
 )
 
 type Config struct {
-	// Instagram
-	Username    string `json:"username"`
-	AccessToken string `json:"access_token"`
-	// Report
+	Username        string `json:"username"`
+	AccessToken     string `json:"access_token"`
 	OutDir          string `json:"output_directory"`
 	IncludeVerified bool   `json:"include_verified"`
 }
@@ -34,14 +32,41 @@ type AccessTokenResponse struct {
 	ExpiresIn   int    `json:"expires_in"`
 }
 
-func promptUserForConfig(config *Config) {
+var (
+	config   Config
+	logFile  *os.File
+	userData map[string]interface{}
+)
+
+func main() {
+	loadConfig()
+
+	initLogFile()
+	defer logFile.Close()
+
+	http.ListenAndServe(":8080", nil)
+
+	fetchAccessToken()
+
+	fetchUserData()
+
+	buildResults()
+}
+
+func promptUserForConfig() {
+	var (
+		err             error
+		username        string
+		outDir          string
+		includeVerified string
+	)
+
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
 		fmt.Print("Enter your Instagram username: ")
-		username, err := reader.ReadString('\n')
-		if err != nil {
-			log.Fatalf("Error reading username: %v", err)
+		if username, err = reader.ReadString('\n'); err != nil {
+			log.Fatalln("Error reading username: ", err)
 		}
 		config.Username = strings.TrimSpace(username)
 		if config.Username != "" && !strings.Contains(config.Username, " ") {
@@ -50,24 +75,10 @@ func promptUserForConfig(config *Config) {
 		fmt.Println("username cannot be empty or contain spaces.")
 	}
 
-	// for {
-	// 	fmt.Print("Enter your Instagram access_token: ")
-	// 	accessToken, err := reader.ReadString('\n')
-	// 	if err != nil {
-	// 		log.Fatalf("Error reading access_token: %v", err)
-	// 	}
-	// 	config.AccessToken = strings.TrimSpace(accessToken)
-	// 	if config.AccessToken != "" && !strings.Contains(config.AccessToken, " ") {
-	// 		break
-	// 	}
-	// 	fmt.Println("access_token cannot be empty or contain spaces.")
-	// }
-
 	for {
 		fmt.Print("Enter the output directory path for your report (leave empty for the same directory as the program): ")
-		outDir, err := reader.ReadString('\n')
-		if err != nil {
-			log.Fatalf("Error reading output directory: %v", err)
+		if outDir, err = reader.ReadString('\n'); err != nil {
+			log.Fatalln("Error reading output directory: ", err)
 		}
 		config.OutDir = strings.TrimSpace(outDir)
 		if config.OutDir == "" {
@@ -82,8 +93,7 @@ func promptUserForConfig(config *Config) {
 
 	for {
 		fmt.Print("Include verified accounts in report? (true/false): ")
-		includeVerified, err := reader.ReadString('\n')
-		if err != nil {
+		if includeVerified, err = reader.ReadString('\n'); err != nil {
 			log.Fatalf("Error reading include_verified: %v", err)
 		}
 		config.IncludeVerified = strings.TrimSpace(includeVerified) == "true"
@@ -94,21 +104,23 @@ func promptUserForConfig(config *Config) {
 	}
 }
 
-func loadConfig() (Config, bool) {
-	config := Config{}
+func loadConfig() {
+	var (
+		err        error
+		configFile *os.File
+	)
 
-	configFile, err := os.Open("config.json")
-	if err != nil {
+	if configFile, err = os.Open("config.json"); err != nil {
 		log.Println("No config file was found; prompting user for configuration.")
-		promptUserForConfig(&config)
-		return config, false
+		promptUserForConfig()
+		return
 	}
 	defer configFile.Close()
 
 	log.Println("A config file was found.")
 
 	decoder := json.NewDecoder(configFile)
-	if err := decoder.Decode(&config); err != nil {
+	if err = decoder.Decode(&config); err != nil {
 		log.Fatalln("Error decoding config file: ", err)
 	}
 
@@ -117,11 +129,6 @@ func loadConfig() (Config, bool) {
 		log.Fatalln("Config file must contain a valid 'username' field without spaces.")
 	}
 
-	// config.AccessToken = strings.TrimSpace(config.AccessToken)
-	// if config.AccessToken == "" || strings.Contains(config.AccessToken, " ") {
-	// 	log.Fatalln("Config file must contain a valid 'access_token' field without spaces.")
-	// }
-
 	config.OutDir = strings.TrimSpace(config.OutDir)
 	if config.OutDir == "" {
 		config.OutDir = "./" // Default to current directory if empty
@@ -129,96 +136,85 @@ func loadConfig() (Config, bool) {
 		log.Fatalln("Config file must contain a valid 'output_directory' field without spaces.")
 	}
 
-	config.IncludeVerified = strings.TrimSpace(fmt.Sprintf("%v", config.IncludeVerified)) == "true" // Default to false if not == 'true'
-
-	return config, true
+	config.IncludeVerified = strings.TrimSpace(fmt.Sprint(config.IncludeVerified)) == "true" // Default to false if not == 'true'
 }
 
-func fetchData(userName, accessToken string) ([]byte, error) {
-	url := fmt.Sprintf("%s%s?access_token=%s", apiBaseURL, userName, accessToken)
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("error fetching data: %v", err)
-	}
-	defer resp.Body.Close()
+func initLogFile() {
+	var err error
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %v", err)
+	logFileName := config.OutDir + "UnmutualConnections_" + time.Now().Format("2006-01-02_15-04-05") + ".log"
+
+	if logFile, err = os.Create(logFileName); err != nil {
+		log.Println("Error creating log file:", err)
 	}
 
-	log.Printf("Raw response for user %s: %s", userName, string(body))
-
-	return body, nil
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	log.SetOutput(multiWriter)
 }
 
-func fetchAccessToken(config Config) {
+func fetchAccessToken() {
+	var (
+		err       error
+		resp      *http.Response
+		tokenResp AccessTokenResponse
+	)
+
 	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
-		url := fmt.Sprintf("https://www.facebook.com/v12.0/dialog/oauth?client_id=%s&redirect_uri=%s&scope=email", clientID, redirectURI)
+		url := fmt.Sprint("https://www.facebook.com/v12.0/dialog/oauth?client_id=", clientID, "&redirect_uri=", redirectURI, "&scope=email")
 		http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 	})
 
 	http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
 		if code == "" {
-			http.Error(w, "Code not found", http.StatusBadRequest)
-			return
+			log.Fatalln("HTTP Error 400 (code not found)") // http.Error(w, "Code not found", http.StatusBadRequest) return
 		}
 
-		tokenURL := fmt.Sprintf("https://graph.facebook.com/v12.0/oauth/access_token?client_id=%s&redirect_uri=%s&client_secret=%s&code=%s", clientID, redirectURI, clientSecret, code)
-		resp, err := http.Get(tokenURL)
-		if err != nil {
-			http.Error(w, "Error getting access token", http.StatusInternalServerError)
-			return
+		tokenURL := fmt.Sprint("https://graph.facebook.com/v12.0/oauth/access_token?client_id=", clientID, "&redirect_uri=", redirectURI, "&client_secret=", clientSecret, "&code=", code)
+		if resp, err = http.Get(tokenURL); err != nil {
+			log.Fatalln("HTTP Error 500 (error getting access token)") // http.Error(w, "Error getting access token", http.StatusInternalServerError) return
 		}
 		defer resp.Body.Close()
 
-		var tokenResp AccessTokenResponse
-		if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-			http.Error(w, "Error decoding access token response", http.StatusInternalServerError)
-			return
+		if err = json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+			log.Fatalln("HTTP Error 500 (error decoding access token response)") // http.Error(w, "Error decoding access token response", http.StatusInternalServerError) return
 		}
 
 		config.AccessToken = tokenResp.AccessToken
-		fmt.Fprintf(w, "Set Access Token: %s\n", tokenResp.AccessToken)
+		log.Println("Set Access Token: ", tokenResp.AccessToken)
 	})
-
-	log.Println("Starting server on :8080")      // Is this necessary?
-	log.Fatal(http.ListenAndServe(":8080", nil)) // Is this necessary?
 }
 
-func main() {
-	config, _ := loadConfig()
+func fetchUserData() {
+	var (
+		err  error
+		resp *http.Response
+		body []byte
+	)
 
-	logFileName := config.OutDir + "UnmutualConnections_" + time.Now().Format("2006-01-02_15-04-05") + ".log"
-
-	logFile, err := os.Create(logFileName)
-	if err != nil {
-		log.Println("Error creating log file:", err)
+	url := fmt.Sprint(apiBaseURL, config.Username, "?access_token=", config.AccessToken)
+	if resp, err = http.Get(url); err != nil {
+		log.Fatalf("error fetching %s's user data: %v", config.Username, err)
 	}
-	defer logFile.Close()
+	defer resp.Body.Close()
 
-	multiWriter := io.MultiWriter(os.Stdout, logFile)
-	log.SetOutput(multiWriter)
+	if body, err = io.ReadAll(resp.Body); err != nil {
+		log.Fatalf("error reading %s's response body: %v", config.Username, err)
+	}
 
+	log.Println("Raw response for user ", config.Username, ": ", string(body))
+
+	if err = json.Unmarshal(body, &userData); err != nil {
+		log.Fatalf("Error parsing %s's data: %v", config.Username, err)
+	}
+}
+
+func buildResults() {
 	not := ""
 	if !config.IncludeVerified {
 		not = " not"
 	}
-	log.Printf("Verified accounts are%s included.", not)
+	log.Print("Verified accounts are", not, " included.")
 
-	fetchAccessToken(config)
-
-	// Fetch data for the user
-	data, err := fetchData(config.Username, config.AccessToken)
-	if err != nil {
-		log.Fatalf("Error fetching data for user %s: %v", config.Username, err)
-	}
-
-	var formattedData map[string]interface{}
-	if err := json.Unmarshal(data, &formattedData); err != nil {
-		log.Fatalf("Error parsing %s's data: %v", config.Username, err)
-	}
-
-	// Process the result...
+	log.Println(userData) // TODO
 }
