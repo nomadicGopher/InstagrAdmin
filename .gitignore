@@ -24,7 +24,7 @@ go.work.sum
 # env file
 .env
 
-# User specific data
+# User & App specific data
 config.json
 
 # Results

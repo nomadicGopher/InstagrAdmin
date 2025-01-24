@@ -268,11 +268,5 @@ func fetchUserData() {
 }
 
 func buildResults() {
-	not := ""
-	if !config.IncludeVerified {
-		not = " not"
-	}
-	log.Print("Verified accounts are", not, " included.")
-
 	log.Println(userData) // TODO
 }
