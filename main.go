@@ -16,10 +16,8 @@ import (
 )
 
 const (
-	apiBaseURL   = "https://graph.instagram.com/" // https://developer.microsoft.com/en-us/graph/graph-explorer
-	clientID     = ""                             // TODO: your-app-id
-	clientSecret = ""                             // TODO: your-app-secret
-	redirectURI  = "http://localhost:8080/callback"
+	apiBaseURL  = "https://graph.instagram.com/" // https://developer.microsoft.com/en-us/graph/graph-explorer
+	redirectURI = "http://localhost:8080/callback"
 )
 
 type Config struct {
@@ -36,10 +34,12 @@ type AccessTokenResponse struct {
 }
 
 var (
-	config   Config
-	logFile  *os.File
-	userData map[string]interface{}
-	debug    *bool = flag.Bool("debug", false, "Add debug logging.")
+	config    Config
+	logFile   *os.File
+	userData  map[string]interface{}
+	debug     *bool   = flag.Bool("debug", false, "Add debug logging.")
+	appID     *string = flag.String("appID", "", "Meta app ID.")
+	appSecret *string = flag.String("appSecret", "", "Meta app secret.")
 )
 
 func main() {
@@ -180,7 +180,7 @@ func initLogFile() {
 
 func registerHandlers() {
 	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
-		url := fmt.Sprint("https://www.facebook.com/v12.0/dialog/oauth?client_id=", clientID, "&redirect_uri=", redirectURI, "&scope=email")
+		url := fmt.Sprint("https://www.facebook.com/v12.0/dialog/oauth?client_id=", *appID, "&redirect_uri=", redirectURI, "&scope=email")
 		http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 	})
 
@@ -196,7 +196,7 @@ func registerHandlers() {
 			return
 		}
 
-		tokenURL := fmt.Sprint("https://graph.facebook.com/v12.0/oauth/access_token?client_id=", clientID, "&redirect_uri=", redirectURI, "&client_secret=", clientSecret, "&code=", code)
+		tokenURL := fmt.Sprint("https://graph.facebook.com/v12.0/oauth/access_token?client_id=", *appID, "&redirect_uri=", redirectURI, "&client_secret=", *appSecret, "&code=", code)
 		resp, err := http.Get(tokenURL)
 		if err != nil {
 			http.Error(w, "Error getting access token", http.StatusInternalServerError)

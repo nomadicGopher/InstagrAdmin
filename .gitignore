@@ -26,6 +26,7 @@ go.work.sum
 
 # User & App specific data
 config.json
+appConfig.json
 
 # Results
 *.log
