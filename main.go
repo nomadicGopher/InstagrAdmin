@@ -66,7 +66,7 @@ func main() {
 		}
 	}()
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(3 * time.Second)
 	openBrowser("http://localhost:8080/login")
 
 	fetchUserData()
@@ -189,18 +189,30 @@ func registerHandlers() {
 
 		code := r.URL.Query().Get("code")
 		if code == "" {
-			log.Fatalln("HTTP Error 400 (code not found)") // http.Error(w, "Code not found", http.StatusBadRequest) return
+			http.Error(w, "Code not found", http.StatusBadRequest)
+			if *debug {
+				log.Fatalln("HTTP Error 400 (code not found)")
+			}
+			return
 		}
 
 		tokenURL := fmt.Sprint("https://graph.facebook.com/v12.0/oauth/access_token?client_id=", clientID, "&redirect_uri=", redirectURI, "&client_secret=", clientSecret, "&code=", code)
 		resp, err := http.Get(tokenURL)
 		if err != nil {
-			log.Fatalln("HTTP Error 500 (error getting access token)") // http.Error(w, "Error getting access token", http.StatusInternalServerError) return
+			http.Error(w, "Error getting access token", http.StatusInternalServerError)
+			if *debug {
+				log.Fatalln("HTTP Error 500 (error getting access token)")
+			}
+			return
 		}
 		defer resp.Body.Close()
 
 		if err = json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-			log.Fatalln("HTTP Error 500 (error decoding access token response)") // http.Error(w, "Error decoding access token response", http.StatusInternalServerError) return
+			http.Error(w, "Error decoding access token response", http.StatusInternalServerError)
+			if *debug {
+				log.Fatalln("HTTP Error 500 (error decoding access token response)")
+			}
+			return
 		}
 
 		config.AccessToken = tokenResp.AccessToken
@@ -227,6 +239,8 @@ func openBrowser(url string) {
 	if err != nil {
 		log.Fatalf("Failed to open browser: %v", err)
 	}
+
+	select {} // TODO: Server never moves on
 }
 
 func fetchUserData() {
