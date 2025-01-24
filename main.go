@@ -3,19 +3,22 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )
 
 const (
 	apiBaseURL   = "https://graph.instagram.com/" // https://developer.microsoft.com/en-us/graph/graph-explorer
-	clientID     = "your-app-id"
-	clientSecret = "your-app-secret"
+	clientID     = ""                             // TODO: your-app-id
+	clientSecret = ""                             // TODO: your-app-secret
 	redirectURI  = "http://localhost:8080/callback"
 )
 
@@ -36,17 +39,35 @@ var (
 	config   Config
 	logFile  *os.File
 	userData map[string]interface{}
+	debug    *bool = flag.Bool("debug", false, "Add debug logging.")
 )
 
 func main() {
+	flag.Parse()
+
 	loadConfig()
 
 	initLogFile()
 	defer logFile.Close()
 
-	http.ListenAndServe(":8080", nil)
+	registerHandlers()
 
-	fetchAccessToken()
+	if *debug {
+		log.Println("Prompting user to authenticate Instagram login.")
+	}
+
+	go func() {
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			log.Fatalf("Failed to start server: %v", err)
+		} else {
+			if *debug {
+				log.Println("Server started successfully.")
+			}
+		}
+	}()
+
+	time.Sleep(1 * time.Second)
+	openBrowser("http://localhost:8080/login")
 
 	fetchUserData()
 
@@ -76,7 +97,7 @@ func promptUserForConfig() {
 	}
 
 	for {
-		fmt.Print("Enter the output directory path for your report (leave empty for the same directory as the program): ")
+		fmt.Print("Enter the output directory path for your report (empty = same as program): ")
 		if outDir, err = reader.ReadString('\n'); err != nil {
 			log.Fatalln("Error reading output directory: ", err)
 		}
@@ -85,10 +106,11 @@ func promptUserForConfig() {
 			config.OutDir = "./"
 			break
 		}
-		if !strings.Contains(config.OutDir, " ") {
+		if _, err := os.Stat(config.OutDir); os.IsNotExist(err) {
+			fmt.Println("The specified directory does not exist.")
+		} else {
 			break
 		}
-		fmt.Println("output_directory cannot contain spaces.")
 	}
 
 	for {
@@ -101,6 +123,10 @@ func promptUserForConfig() {
 			break
 		}
 		fmt.Println("include_verified input cannot contain spaces.")
+	}
+
+	if *debug {
+		log.Printf("Finalized Config Details:\n\tusername: %s\n\toutput_directory: %s\n\tinclude_verified: %t\n", config.Username, config.OutDir, config.IncludeVerified)
 	}
 }
 
@@ -152,26 +178,23 @@ func initLogFile() {
 	log.SetOutput(multiWriter)
 }
 
-func fetchAccessToken() {
-	var (
-		err       error
-		resp      *http.Response
-		tokenResp AccessTokenResponse
-	)
-
+func registerHandlers() {
 	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 		url := fmt.Sprint("https://www.facebook.com/v12.0/dialog/oauth?client_id=", clientID, "&redirect_uri=", redirectURI, "&scope=email")
 		http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 	})
 
 	http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+		var tokenResp AccessTokenResponse
+
 		code := r.URL.Query().Get("code")
 		if code == "" {
 			log.Fatalln("HTTP Error 400 (code not found)") // http.Error(w, "Code not found", http.StatusBadRequest) return
 		}
 
 		tokenURL := fmt.Sprint("https://graph.facebook.com/v12.0/oauth/access_token?client_id=", clientID, "&redirect_uri=", redirectURI, "&client_secret=", clientSecret, "&code=", code)
-		if resp, err = http.Get(tokenURL); err != nil {
+		resp, err := http.Get(tokenURL)
+		if err != nil {
 			log.Fatalln("HTTP Error 500 (error getting access token)") // http.Error(w, "Error getting access token", http.StatusInternalServerError) return
 		}
 		defer resp.Body.Close()
@@ -182,7 +205,28 @@ func fetchAccessToken() {
 
 		config.AccessToken = tokenResp.AccessToken
 		log.Println("Set Access Token: ", tokenResp.AccessToken)
+
+		fmt.Fprintln(w, "Authentication successful! You can close this browser window.")
 	})
+}
+
+func openBrowser(url string) {
+	var err error
+
+	switch os := runtime.GOOS; os {
+	case "linux":
+		err = exec.Command("xdg-open", url).Start()
+	case "windows":
+		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "darwin":
+		err = exec.Command("open", url).Start()
+	default:
+		err = fmt.Errorf("unsupported platform")
+	}
+
+	if err != nil {
+		log.Fatalf("Failed to open browser: %v", err)
+	}
 }
 
 func fetchUserData() {
