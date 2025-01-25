@@ -240,7 +240,7 @@ func openBrowser(url string) {
 		log.Fatalf("Failed to open browser: %v", err)
 	}
 
-	select {} // TODO: Server never moves on
+	select {} //! BUG: #3
 }
 
 func fetchUserData() {
@@ -268,5 +268,5 @@ func fetchUserData() {
 }
 
 func buildResults() {
-	log.Println(userData) // TODO
+	log.Println(userData) // TODO: #4
 }
